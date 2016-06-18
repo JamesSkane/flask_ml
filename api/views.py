@@ -1,14 +1,21 @@
 from api import app
 from flask import jsonify
 from flask import render_template
-from sklearn import preprocessing
-from sklearn import decomposition
-from sklearn.cluster import KMeans
+from flask import url_for
 import json
 import os
 import pandas as pd
+import numpy as np
+from scipy import interp
 import matplotlib.pyplot as plt
-from flask import url_for
+from sklearn.cross_validation import StratifiedKFold, train_test_split
+from sklearn import preprocessing
+from sklearn import decomposition
+from sklearn.cluster import KMeans
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import roc_curve, auc, accuracy_score, f1_score, recall_score, confusion_matrix, classification_report
+from sklearn.pipeline import Pipeline
+
 
 def get_abs_path():
     """
@@ -97,6 +104,74 @@ def d3():
                            data_file=url_for('static',
                                              filename='tmp/kmeans.csv'))
 
+@app.route('/api/v1/prediction_confusion_matrix')
+def confusion_mat():
+    frame = get_data()
+    X = frame.ix[:, (frame.columns != 'class') & (frame.columns != 'code')].as_matrix()
+    y = frame.ix[:, frame.columns == 'class'].as_matrix()
+    le = preprocessing.LabelEncoder()
+    y = le.fit_transform(y.ravel())
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20, random_state=1)
+    pipe_lr = Pipeline([('scl', preprocessing.StandardScaler()),
+                        ('pca', decomposition.PCA(n_components=2)),
+                        ('clf', LogisticRegression(random_state=1))])
+    pipe_lr.fit(X_train, y_train)
+    y_pred = pipe_lr.predict(X_test)
+    confmat = confusion_matrix(y_true=y_test, y_pred=y_pred)
+    #data = json.load(confmat.to_json())
+    #return jsonify(confmat)
+    c = pd.DataFrame([val for row in confmat for val in row], index=['tp', 'fn', 'fp', 'tn'],columns=['logistic regression'])
+    data = json.loads(c.to_json())
+    return jsonify(data)
+
+
+@app.route('/prediction')
+def classify():
+    frame = get_data()
+    X = frame.ix[:, (frame.columns != 'class') & (frame.columns != 'code')].as_matrix()
+    y = frame.ix[:, frame.columns == 'class'].as_matrix()
+    le = preprocessing.LabelEncoder()
+    y = le.fit_transform(y.ravel())
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20, random_state=1)
+    pipe_lr = Pipeline([('scl', preprocessing.StandardScaler()),
+                        ('pca', decomposition.PCA(n_components=2)),
+                        ('clf', LogisticRegression(random_state=1))])
+    pipe_lr.fit(X_train, y_train)
+    y_pred = pipe_lr.predict(X_test)
+    cv = StratifiedKFold(y, n_folds=6)
+    classifier = pipe_lr
+    mean_tpr = 0.0
+    mean_fpr = np.linspace(0, 1, 100)
+    all_tpr = []
+    fig, ax = plt.subplots(figsize=(10, 10))
+
+    for i, (train, test) in enumerate(cv):
+        probas_ = classifier.fit(X[train], y[train]).predict_proba(X[test])
+        # Compute ROC curve and area the curve
+        fpr, tpr, thresholds = roc_curve(y[test], probas_[:, 1])
+        mean_tpr += interp(mean_fpr, fpr, tpr)
+        mean_tpr[0] = 0.0
+        roc_auc = auc(fpr, tpr)
+        plt.plot(fpr, tpr, lw=1, label='ROC fold %d (area = %0.2f)' % (i, roc_auc))
+    plt.plot([0, 1], [0, 1], '--', color=(0.6, 0.6, 0.6), label='Random chance')
+
+    mean_tpr /= len(cv)
+    mean_tpr[-1] = 1.0
+    mean_auc = auc(mean_fpr, mean_tpr)
+    plt.plot(mean_fpr, mean_tpr, 'k--',
+             label='Mean ROC (area = %0.2f)' % mean_auc, lw=2)
+
+    plt.xlim([-0.05, 1.05])
+    plt.ylim([-0.05, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('Receiver operating characteristic with cross validation')
+    plt.legend(loc="lower right")
+    fig_path = os.path.join(get_abs_path(), 'static', 'tmp', 'roc.png')
+    fig.savefig(fig_path)
+    return render_template('prediction.html',
+                           fig=url_for('static', filename='tmp/roc.png'))
+
 
 @app.route('/head')
 def head():
@@ -108,3 +183,32 @@ def head():
 @app.route('/count')
 def count():
     pass
+
+
+@app.route('/cm')
+def cm():
+    frame = get_data()
+    X = frame.ix[:, (frame.columns != 'class') & (frame.columns != 'code')].as_matrix()
+    y = frame.ix[:, frame.columns == 'class'].as_matrix()
+    le = preprocessing.LabelEncoder()
+    y = le.fit_transform(y.ravel())
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20, random_state=1)
+    pipe_lr = Pipeline([('scl', preprocessing.StandardScaler()),
+                        ('pca', decomposition.PCA(n_components=2)),
+                        ('clf', LogisticRegression(random_state=1))])
+    pipe_lr.fit(X_train, y_train)
+    y_pred = pipe_lr.predict(X_test)
+    confmat = confusion_matrix(y_true=y_test, y_pred=y_pred)
+    fig, ax = plt.subplots(figsize=(10, 10))
+    ax.matshow(confmat, cmap=plt.cm.Blues, alpha=0.3)
+    for i in range(confmat.shape[0]):
+        for j in range(confmat.shape[1]):
+            ax.text(x=j, y=i,
+                    s=confmat[i, j],
+                    va='center', ha='center')
+    plt.xlabel('predicted label')
+    plt.ylabel('true label')
+    plt.title('Confusion Matrix: Logistic Regression Pipeline')
+    fig_path = os.path.join(get_abs_path(), 'static', 'tmp', 'con_mat.png')
+    fig.savefig(fig_path)
+    return render_template('index.html', fig=url_for('static', filename='tmp/con_mat.png'))
