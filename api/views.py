@@ -13,7 +13,7 @@ from sklearn import preprocessing
 from sklearn import decomposition
 from sklearn.cluster import KMeans
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import roc_curve, auc, accuracy_score, f1_score, recall_score, confusion_matrix, classification_report
+from sklearn.metrics import roc_curve, auc,  confusion_matrix
 from sklearn.pipeline import Pipeline
 
 
@@ -31,6 +31,14 @@ def get_abs_path():
 
 
 def get_data():
+    """
+    Get the breast cancer data.
+
+    Returns
+    -------
+    pandas data frame
+        Containing no na values.
+    """
     f_name = os.path.join(get_abs_path(), 'data', 'breast-cancer-wisconsin.csv')
     columns = ['code', 'clump_thickness', 'size_uniformity', 'shape_uniformity',
                'adhesion', 'cell_size', 'bare_nuclei', 'bland_chromatin',
@@ -41,6 +49,14 @@ def get_data():
 
 @app.route('/')
 def index():
+    """
+    Performs Kmeans clustering on principle components.
+
+    Returns
+    -------
+    Static plot
+        cluster.png, plot of components 1 & 2 with with clusters hued
+    """
     df = get_data()
     X = df.ix[:, (df.columns != 'class') & (df.columns != 'code')].as_matrix()
     y = df.ix[:, df.columns == 'class'].as_matrix()
@@ -80,6 +96,14 @@ def index():
 
 @app.route('/d3')
 def d3():
+    """
+    Performs Kmeans clustering on principle components.
+
+    Returns
+    -------
+    Interactive d3 plot
+        Plot of components 1 & 2 with with clusters hued.
+    """
     df = get_data()
     X = df.ix[:, (df.columns != 'class') & (df.columns != 'code')].as_matrix()
     y = df.ix[:, df.columns == 'class'].as_matrix()
@@ -106,6 +130,13 @@ def d3():
 
 @app.route('/api/v1/prediction_confusion_matrix')
 def confusion_mat():
+    """
+      Classifies samples with Logistic Regression pipeline and produces a confusion matrix.
+
+      Returns
+      -------
+      json confusion matrix
+      """
     frame = get_data()
     X = frame.ix[:, (frame.columns != 'class') & (frame.columns != 'code')].as_matrix()
     y = frame.ix[:, frame.columns == 'class'].as_matrix()
@@ -118,8 +149,6 @@ def confusion_mat():
     pipe_lr.fit(X_train, y_train)
     y_pred = pipe_lr.predict(X_test)
     confmat = confusion_matrix(y_true=y_test, y_pred=y_pred)
-    #data = json.load(confmat.to_json())
-    #return jsonify(confmat)
     c = pd.DataFrame([val for row in confmat for val in row], index=['tp', 'fn', 'fp', 'tn'],columns=['logistic regression'])
     data = json.loads(c.to_json())
     return jsonify(data)
@@ -127,6 +156,14 @@ def confusion_mat():
 
 @app.route('/prediction')
 def classify():
+    """
+      Classifies samples with Logistic Regression pipeline.
+
+      Returns
+      -------
+      Static ROC plot
+        Coss validation folds hued, static image contained in roc.png
+      """
     frame = get_data()
     X = frame.ix[:, (frame.columns != 'class') & (frame.columns != 'code')].as_matrix()
     y = frame.ix[:, frame.columns == 'class'].as_matrix()
@@ -187,6 +224,14 @@ def count():
 
 @app.route('/cm')
 def cm():
+    """
+      Classifies samples with Logistic Regression pipeline.
+
+      Returns
+      -------
+      Static confusion matrix plot
+        static image contained in con_mat.png
+      """
     frame = get_data()
     X = frame.ix[:, (frame.columns != 'class') & (frame.columns != 'code')].as_matrix()
     y = frame.ix[:, frame.columns == 'class'].as_matrix()
