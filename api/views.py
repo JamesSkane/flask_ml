@@ -212,3 +212,4 @@ def cm():
     fig_path = os.path.join(get_abs_path(), 'static', 'tmp', 'con_mat.png')
     fig.savefig(fig_path)
     return render_template('index.html', fig=url_for('static', filename='tmp/con_mat.png'))
+
